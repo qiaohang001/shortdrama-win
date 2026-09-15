@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+src-tauri/target/
+
+# Local runtime resources (downloaded by CI)
+src-tauri/resources/ffmpeg.exe
+
+# Scratch / legacy
+tmp/
+jinsu-app/
+vite.config.js.timestamp-*.mjs
+
+# Logs & OS
+*.log
+.DS_Store
+Thumbs.db

@@ -34,9 +34,11 @@ fn safe_filename(name: &str, fallback: &str) -> String {
 /// 无 CORS、无超大 base64 内存问题；失败时返回可读原因。
 async fn fetch_to(url: &str, dir: &std::path::Path, filename: &str) -> Result<std::path::PathBuf, String> {
     let _ = std::fs::create_dir_all(dir);
-    let path = dir.join(filename);
+    let mut path = dir.join(filename);
     let resp = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(600))
+        // 带浏览器 UA，避免部分对象存储（COS/OSS）拦截无 UA 或脚本 UA 的请求
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36")
         .build()
         .map_err(|e| format!("HTTP 客户端初始化失败: {e}"))?
         .get(url)
@@ -45,6 +47,27 @@ async fn fetch_to(url: &str, dir: &std::path::Path, filename: &str) -> Result<st
         .map_err(|e| format!("下载失败（{url}）: {e}"))?;
     if !resp.status().is_success() {
         return Err(format!("下载失败（{url}）: HTTP {}", resp.status()));
+    }
+    // 文件名没有扩展名时按 Content-Type 自动补，避免存成无后缀文件
+    if path.extension().is_none() {
+        let ct = resp
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_lowercase();
+        let ext = if ct.contains("video/mp4") { "mp4" }
+            else if ct.contains("video/webm") { "webm" }
+            else if ct.contains("video/quicktime") { "mov" }
+            else if ct.contains("image/png") { "png" }
+            else if ct.contains("image/jpeg") { "jpg" }
+            else if ct.contains("image/webp") { "webp" }
+            else if ct.contains("audio/mpeg") { "mp3" }
+            else if ct.contains("audio/wav") { "wav" }
+            else if ct.contains("application/json") { "json" }
+            else if ct.contains("application/pdf") { "pdf" }
+            else { "bin" };
+        path.set_extension(ext);
     }
     let mut out = std::fs::File::create(&path).map_err(|e| format!("创建文件失败: {e}"))?;
     let mut stream = resp.bytes_stream();

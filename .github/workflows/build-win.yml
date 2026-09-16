@@ -62,13 +62,24 @@ jobs:
           if-no-files-found: error
 
       # 发布为 GitHub Release（公开资产，可匿名下载；官网下载可直接指向 Release asset）
+      # 用纯 REST API 创建 Release + 上传资产，不依赖 gh CLI；失败显式抛错
       - name: Publish Windows Release (auto)
+        shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $ErrorActionPreference = 'Continue'
+          $ErrorActionPreference = 'Stop'
           $TAG = "win-${env:GITHUB_RUN_NUMBER}"
-          $SETUPS = Get-ChildItem src-tauri/target/release/bundle/nsis/*.exe | Select-Object -ExpandProperty FullName
-          $ARGS = @('release','create', $TAG, '--repo', "$env:GITHUB_REPOSITORY", '--title', "烬序影墟 Windows Build #$env:GITHUB_RUN_NUMBER", '--notes', '自动构建产物（NSIS 安装包，可直接安装）', '--clobber') + $SETUPS
-          gh $ARGS 2>&1 | Write-Output
-          if ($LASTEXITCODE -ne 0) { Write-Output "release 已存在或失败，跳过" }
+          $SETUPS = @(Get-ChildItem src-tauri/target/release/bundle/nsis/*.exe | Select-Object -ExpandProperty FullName)
+          Write-Output "SETUPS=$($SETUPS -join ',')"
+          if ($SETUPS.Count -eq 0) { throw '未找到 NSIS 安装包，无法发布' }
+          $headers = @{ Authorization = "token $env:GH_TOKEN"; Accept = 'application/vnd.github+json' }
+          $body = @{ tag_name = $TAG; name = "烬序影墟 Windows Build #$env:GITHUB_RUN_NUMBER"; body = '自动构建产物（NSIS 安装包，可直接安装）' } | ConvertTo-Json
+          $release = Invoke-RestMethod -Method Post -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases" -Headers $headers -Body $body -ContentType 'application/json'
+          Write-Output "release created id=$($release.id)"
+          foreach ($f in $SETUPS) {
+            $name = [IO.Path]::GetFileName($f)
+            $upUrl = "https://uploads.github.com/repos/$env:GITHUB_REPOSITORY/releases/$($release.id)/assets?name=$([uri]::EscapeDataString($name))"
+            $up = Invoke-RestMethod -Method Post -Uri $upUrl -Headers $headers -ContentType 'application/octet-stream' -InFile $f
+            Write-Output "asset uploaded: $($up.name)"
+          }

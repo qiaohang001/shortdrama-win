@@ -27,8 +27,9 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      "@dual/agnes-client": r("../../packages/agnes-client/src/index.js"),
-      "@dual/ui": r("../../packages/ui/src/index.js"),
+      "@dual/agnes-client": r("./local-packages/agnes-client/src/index.js"),
+      "@dual/glm-client": r("./local-packages/glm-client/src/index.js"),
+      "@dual/ui": r("./local-packages/ui/src/index.js"),
     },
   },
 });
